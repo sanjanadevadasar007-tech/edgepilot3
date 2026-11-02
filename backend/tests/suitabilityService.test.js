@@ -37,6 +37,23 @@ describe('suitability service input contract', () => {
     });
   });
 
+  test('normalizes numeric strings from API clients before scoring', async () => {
+    await calculateSuitability({
+      latency_requirement_ms: '50',
+      bandwidth_requirement: 'medium',
+      budget_monthly: '1000',
+      privacy_requirement: 'high',
+      criticality: 'high'
+    });
+
+    expect(callTeamEngine).toHaveBeenCalledWith('recommend', expect.objectContaining({
+      workload: expect.objectContaining({
+        latency_requirement_ms: 50,
+        budget_monthly: 1000
+      })
+    }));
+  });
+
   test('retains the evidence used by scoring for report generation', async () => {
     const result = await calculateSuitability({
       latency_requirement_ms: 50,

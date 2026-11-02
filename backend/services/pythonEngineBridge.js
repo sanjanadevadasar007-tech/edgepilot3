@@ -2,7 +2,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-const PYTHON_PATH = process.env.PYTHON_PATH || 'C:\\Users\\Bhavyashree\\AppData\\Local\\Programs\\Python\\Python313\\python.exe';
+const PYTHON_PATH = process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
 
 const possiblePaths = [
   path.join(__dirname, '..', 'ai_engine', 'bridge_runner.py'),
@@ -24,6 +24,7 @@ function callTeamEngine(action, payload) {
         QUALCOMM_MODEL: process.env.QUALCOMM_MODEL || ''
       }
     });
+    pyProcess.on('error', reject);
 
     let outputData = '';
     let errorData = '';

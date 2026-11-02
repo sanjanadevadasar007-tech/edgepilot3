@@ -27,6 +27,15 @@ function normalizeWorkload(workload) {
     }
   }
 
+  for (const field of ['latency_requirement_ms', 'budget_monthly']) {
+    if (typeof normalized[field] === 'string' && normalized[field].trim() !== '') {
+      const numericValue = Number(normalized[field]);
+      if (Number.isFinite(numericValue)) {
+        normalized[field] = numericValue;
+      }
+    }
+  }
+
   return normalized;
 }
 

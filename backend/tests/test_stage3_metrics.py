@@ -22,7 +22,7 @@ def ev(value, source="estimated", field="latency_ms", **extra):
 class Stage3EvidenceTests(unittest.TestCase):
     def test_existing_request_still_works(self):
         r = recommend(BASE)
-        self.assertEqual(r["details"]["method"], "transparent_weighted_heuristic_v3")
+        self.assertEqual(r["details"]["method"], "transparent_weighted_heuristic_v4")
         self.assertIsNone(r["recommended_tier"])
 
     def test_nested_latency_estimate_appears(self):

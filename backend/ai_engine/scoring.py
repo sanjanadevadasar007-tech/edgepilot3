@@ -1,10 +1,14 @@
-"""Transparent weighted multi-criteria suitability scoring (v3).
+"""Transparent weighted multi-criteria suitability scoring (v4).
 
 Qualitative tier profiles are hypotheses. Unknown cost uses a transparent neutral
-prior of 50; never confuse the placeholder with observed affordability.
+prior of 50; never confuse the placeholder with observed affordability. Latency SLA
+breaches smoothly attenuate the full weighted score.
 """
+from math import exp
 from .config import TIERS, FACTORS, PROFILES
 from .metrics import field_source
+
+LATENCY_BREACH_DECAY = 2.0
 
 
 def weights(workload):
@@ -35,6 +39,14 @@ def latency_score(actual, deadline):
     if actual <= deadline:
         return clamp(100 - 25 * actual / deadline)
     return clamp(75 - 75 * (actual - deadline) / deadline)
+
+
+def latency_sla_multiplier(actual, deadline):
+    """Exponentially attenuate a tier's score by its relative SLA overrun."""
+    if actual <= deadline:
+        return 1.0
+    relative_overrun = actual / deadline - 1
+    return exp(-LATENCY_BREACH_DECAY * relative_overrun)
 
 
 def affordability_score(cost, budget):
@@ -70,9 +82,13 @@ def calculate(workload, metrics, blocked):
         origins = {factor: "heuristic_profile" for factor in PROFILES[tier]}
         origins["affordability"] = "unknown_neutral_prior"
         tier_metric = metrics.get(tier, {})
+        latency_multiplier = 1.0
         if "latency_ms" in tier_metric:
             factor_scores["latency"] = latency_score(tier_metric["latency_ms"], workload["latency_requirement_ms"])
             origins["latency"] = f'{field_source(tier_metric, "latency_ms")}_end_to_end_latency'
+            latency_multiplier = latency_sla_multiplier(
+                tier_metric["latency_ms"], workload["latency_requirement_ms"]
+            )
         if "monthly_cost_inr" in tier_metric:
             budget_score = affordability_score(tier_metric["monthly_cost_inr"], workload["budget_monthly"])
             relative_score = relative_cost_score(tier_metric["monthly_cost_inr"], known_costs)
@@ -84,11 +100,19 @@ def calculate(workload, metrics, blocked):
             factor: {"value": round(factor_scores[factor], 1),
                      "weight": importance[factor],
                      "origin": origins[factor],
-                     "weighted_contribution": round(factor_scores[factor] * importance[factor] / denominator, 2)}
+                     "global_score_multiplier": round(latency_multiplier, 6),
+                     "weighted_contribution": round(
+                         factor_scores[factor] * importance[factor] / denominator
+                         * latency_multiplier, 2
+                     )}
             for factor in FACTORS
         }
         unblocked = not bool(blocked[tier])
-        score = sum(factor_scores[f] * importance[f] for f in FACTORS) / denominator
+        score = (
+            sum(factor_scores[f] * importance[f] for f in FACTORS)
+            / denominator
+            * latency_multiplier
+        )
         scores[tier] = round(score, 1) if unblocked else 0.0
         qualifications[tier] = "eligible" if unblocked else "infeasible"
     return scores, breakdown, qualifications

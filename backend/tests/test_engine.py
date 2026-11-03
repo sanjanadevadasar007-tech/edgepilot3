@@ -161,8 +161,10 @@ class TestEdgepilot(unittest.TestCase):
         self.assertIn("On-device", result["explanation"])
 
     def test_counterfactual_analysis(self):
-        result = compare_scenarios(SAMPLE, {"model_ram_required_mb": 10000,
-                                            "device_available_ram_mb": 1000}, metrics_by_tier={
+        workload = copy.deepcopy(SAMPLE)
+        workload["workload"]["latency_requirement_ms"] = 8
+        result = compare_scenarios(workload, {"model_ram_required_mb": 10000,
+                                              "device_available_ram_mb": 1000}, metrics_by_tier={
             "on_device": {"source": "estimated", "latency_ms": 15, "monthly_cost_inr": 900},
             "far_edge": {"source": "estimated", "latency_ms": 30, "monthly_cost_inr": 500},
         })

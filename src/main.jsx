@@ -1185,6 +1185,9 @@ function Results({
   const scenarioFeasibility = isRecord(scenarioResult.details?.feasibility)
     ? Object.values(scenarioResult.details.feasibility).filter(isRecord)
     : [];
+  const scenarioFeasibilityByTier = isRecord(scenarioResult.details?.feasibility)
+    ? scenarioResult.details.feasibility
+    : {};
   const hasFeasibleScenarioOption = scenarioFeasibility.some((tier) => tier.eligible === true);
   const hasNoScenarioRecommendation =
     comparison?.new_tier === null ||
@@ -1199,6 +1202,18 @@ function Results({
     !hasNoScenarioRecommendation &&
     typeof comparison?.new_tier === 'string' &&
     comparison.new_tier.length > 0;
+  const highestScoredEligibleTier = hasNoScenarioRecommendation
+    && hasFeasibleScenarioOption
+    && metricsHandling?.mode === 'baseline_metrics_invalidated'
+    ? scenarioScores
+      .filter(([tier, delta]) =>
+        scenarioFeasibilityByTier[normalizeTierKey(tier)]?.eligible === true
+        && delta?.after !== null
+        && delta?.after !== undefined
+        && delta?.after !== ''
+        && Number.isFinite(Number(delta?.after)))
+      .sort((a, b) => Number(b[1].after) - Number(a[1].after))[0]?.[0] ?? null
+    : null;
   const formatComparisonTier = (tier) => (
     typeof tier === 'string'
       ? formatTierName(tier)
@@ -1208,8 +1223,8 @@ function Results({
   );
   const scenarioResultMessage = hasNoFeasibleScenarioTier
     ? 'No feasible deployment tier found for the updated constraints.'
-    : hasNoScenarioRecommendation && hasFeasibleScenarioOption && metricsHandling?.mode === 'baseline_metrics_invalidated'
-      ? 'Eligible tiers remain, but the backend could not select a recommendation after baseline metrics were invalidated.'
+    : highestScoredEligibleTier
+      ? `${formatComparisonTier(comparison?.original_tier)} → ${formatTierName(highestScoredEligibleTier)} has the highest returned score among eligible tiers. This is a provisional comparison, not a final recommendation.`
       : hasNoScenarioRecommendation
         ? 'The backend did not return a deployment recommendation for this scenario.'
     : comparison?.recommendation_changed === true && hasScenarioTier
@@ -1457,6 +1472,8 @@ function Results({
                   <h2>
                     {hasNoFeasibleScenarioTier
                       ? 'No feasible deployment tier'
+                      : highestScoredEligibleTier
+                        ? 'Highest-scoring eligible tier (provisional)'
                       : hasNoScenarioRecommendation
                         ? 'No recommendation selected'
                       : comparison?.recommendation_changed === true
@@ -1471,6 +1488,8 @@ function Results({
                   →{' '}
                   {hasNoFeasibleScenarioTier
                     ? 'No feasible tier'
+                    : highestScoredEligibleTier
+                      ? `${formatTierName(highestScoredEligibleTier)} · highest score`
                     : hasNoScenarioRecommendation
                       ? 'No recommendation'
                     : hasScenarioTier
@@ -1488,6 +1507,8 @@ function Results({
               }`}>
                 {hasNoFeasibleScenarioTier
                   ? 'Feasibility: no feasible tier.'
+                  : highestScoredEligibleTier
+                    ? `Highest eligible score: ${formatTierName(highestScoredEligibleTier)}. This is not a backend recommendation.`
                   : hasNoScenarioRecommendation && hasFeasibleScenarioOption
                     ? 'Some tiers pass hard feasibility checks, but there is not enough scenario evidence to select a winner.'
                     : hasNoScenarioRecommendation
@@ -1513,11 +1534,17 @@ function Results({
               </div>
               <div className="scenario-score-grid" aria-label="Tier score changes">
                 {scenarioScores.map(([tier, delta]) => (
-                  <div key={tier}>
+                  <div
+                    key={tier}
+                    className={highestScoredEligibleTier === tier ? 'is-highest-scored' : ''}
+                  >
                     <span>{tier}</span>
                     <strong>
                       <span>Before {formatScore(delta?.before)}</span>
                       <span>Scenario {formatScore(delta?.after)}</span>
+                      {highestScoredEligibleTier === tier && (
+                        <small className="score-highest">Highest eligible score · provisional</small>
+                      )}
                       <small className={
                         Number(delta?.delta) > 0
                           ? 'score-up'

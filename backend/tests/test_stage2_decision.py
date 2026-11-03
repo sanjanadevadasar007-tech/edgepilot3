@@ -2,7 +2,12 @@
 from copy import deepcopy
 import unittest
 from ai_engine.recommender import recommend
-from ai_engine.scoring import latency_score, affordability_score, weights
+from ai_engine.scoring import (
+    affordability_score,
+    latency_score,
+    latency_sla_multiplier,
+    weights,
+)
 
 BASE = {"workload": {"latency_requirement_ms": 50, "bandwidth_requirement": "medium",
                      "budget_monthly": 1000, "privacy_requirement": "high", "criticality": "high"}}
@@ -21,7 +26,7 @@ class DecisionEngineStage2(unittest.TestCase):
         self.assertTrue(all(k in r for k in keys))
         self.assertIsNone(r["recommended_tier"])
         self.assertEqual(r["details"]["ranking"], [])
-        self.assertEqual(r["details"]["method"], "transparent_weighted_heuristic_v3")
+        self.assertEqual(r["details"]["method"], "transparent_weighted_heuristic_v4")
         self.assertEqual(r["details"]["explanation_source"], "deterministic")
 
     def test_unknown_cost_is_neutral_and_not_presented_as_real_cost(self):
@@ -137,6 +142,15 @@ class DecisionEngineStage2(unittest.TestCase):
         self.assertEqual(relaxed["latency"], 1)
         self.assertGreater(strict["latency"], relaxed["latency"])
 
+    def test_latency_breach_multiplier_decays_smoothly_with_relative_overrun(self):
+        on_target = latency_sla_multiplier(50, 50)
+        small_overrun = latency_sla_multiplier(55, 50)
+        large_overrun = latency_sla_multiplier(100, 50)
+
+        self.assertEqual(on_target, 1)
+        self.assertGreater(on_target, small_overrun)
+        self.assertGreater(small_overrun, large_overrun)
+
     def test_estimated_sla_miss_is_ranked_as_provisional_not_hard_blocked(self):
         metrics = {
             "on_device": {"source": "estimated", "latency_ms": 15, "monthly_cost_inr": 900},
@@ -211,6 +225,38 @@ class DecisionEngineStage2(unittest.TestCase):
                             for check in result["details"]["sla_checks"].values()))
         self.assertTrue(all(item["eligible"] for item in result["details"]["feasibility"].values()))
         self.assertTrue(any("estimated SLA overrun" in warning for warning in result["warnings"]))
+        self.assertEqual(result["recommended_tier"], "on_device")
+
+    def test_latency_sensitivity_sweep_moves_outward_as_deadline_relaxes(self):
+        from pathlib import Path
+        import json
+
+        metrics = json.loads(Path("examples/stage6_pareto_tradeoff_metrics_DEMO.json").read_text())
+        expected = {
+            8: "on_device",
+            50: "far_edge",
+            100: "regional_edge",
+            150: "cloud",
+            274: "cloud",
+            500: "cloud",
+            1000: "cloud",
+        }
+        actual = []
+        for target, expected_tier in expected.items():
+            with self.subTest(latency_target_ms=target):
+                result = recommend(request(
+                    latency_requirement_ms=target,
+                    budget_monthly=1000,
+                    privacy_requirement="medium",
+                    bandwidth_requirement="high",
+                    criticality="high",
+                ), metrics_by_tier=metrics)
+                self.assertEqual(result["recommended_tier"], expected_tier, result["scores"])
+                actual.append(result["recommended_tier"])
+
+        tier_order = ["on_device", "far_edge", "regional_edge", "cloud"]
+        positions = [tier_order.index(tier) for tier in actual]
+        self.assertEqual(positions, sorted(positions))
 
     def test_reject_invalid_optional_fields(self):
         fields = [

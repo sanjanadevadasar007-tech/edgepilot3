@@ -218,6 +218,6 @@ def recommend(payload, *, metrics_by_tier=None, llm=None):
             "tier_estimates": tier_estimates,
             "sla_checks": sla_checks,
             "explanation_source": explanation_source,
-            "method": "transparent_weighted_heuristic_v3",
+            "method": "transparent_weighted_heuristic_v4",
         },
     }

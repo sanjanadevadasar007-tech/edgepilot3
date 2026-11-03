@@ -11,13 +11,13 @@ Stage 2 replaces **five Python source files** while keeping Stage 1 benchmark ma
 - `ai_engine/recommender.py`: preserves v1 response keys and adds `details.weights`, `details.evidence_gaps`, `details.decision_drivers`, `details.explanation_source`.
 - `tests/test_stage2_decision.py`: 20 offline tests covering the changes.
 
-The formula is `score(tier) = sum(weight_i * score_i(tier)) / sum(weight_i)` for hard-constraint-eligible tiers, and zero for tiers excluded by hard constraints. Scores are *heuristic suitability indices* (not calibrated probabilities or benchmarks). A tier can be recommended when both latency and cost are available and neither has a verified violation; estimated misses remain provisional rather than becoming hard exclusions. The highest score wins, with missing metrics left unknown. All criterion profiles are project assumptions and require validation. Tier order in ties is stable.
+The formula is `score(tier) = weighted_mean(factors) * exp(-2 * max(0, latency_ms / latency_target_ms - 1))` for hard-constraint-eligible tiers, and zero for tiers excluded by hard constraints. Scores are *heuristic suitability indices* (not calibrated probabilities or benchmarks). A tier can be recommended when both latency and cost are available and neither has a verified violation; estimated misses remain provisional rather than becoming hard exclusions. The highest score wins, with missing metrics left unknown. All criterion profiles are project assumptions and require validation. Tier order in ties is stable.
 
 ### Handling unknown values
 
 If **no cost** is supplied for a tier, affordability gets 50/100 (neutral prior) with `origin: unknown_neutral_prior`, *not* an actual predicted cost. No money value is returned in `estimates.monthly_cost`. The default neutral score still influences the ranking; the associated uncertainty is explicit in the response. Stage 3 will improve comparability by providing sourced per-tier estimates.
 
-`latency_ms` in tier metrics means **end-to-end** latency under a comparable workload. `inference_latency_ms` means only time spent running the model and does not change end-to-end score. An E2E *measured* latency beyond deadline is a hard feasibility failure. An *estimated* latency beyond deadline is a `provisional_fail`: it lowers suitability and warns users but does not prove infeasibility. Measured/quoted cost above budget is a verified hard failure; estimated cost above budget remains provisional. Quotes and measurements must be genuine and accurately identified by the integration layer.
+`latency_ms` in tier metrics means **end-to-end** latency under a comparable workload. `inference_latency_ms` means only time spent running the model and does not change end-to-end score. An E2E *measured* latency beyond deadline is a hard feasibility failure. An *estimated* latency beyond deadline is a `provisional_fail`: it attenuates the full suitability score by `exp(-2 * (latency / deadline - 1))` and warns users, but does not prove infeasibility. Measured/quoted cost above budget is a verified hard failure; estimated cost above budget remains provisional. Quotes and measurements must be genuine and accurately identified by the integration layer.
 
 ### Hard feasibility rules
 
@@ -78,7 +78,7 @@ Do not invent or present the above EXAMPLE numbers as measurements or actual quo
 - `feasibility.{tier}.verification`: `partial` or `checked` (NOT regulatory compliance certification).
 - `decision_drivers`: advantages over runner-up, by factor; interpret negative values as disadvantages.
 - `explanation_source`: `deterministic` or `qualcomm_llm` (only indicates a successful adapter return; not that explanation accuracy is certified).
-- `method`: `transparent_weighted_heuristic_v3`.
+- `method`: `transparent_weighted_heuristic_v4`.
 - `sla_checks.{tier}`: numeric pass/fail values, source-aware provisional status, and whether metrics permit provisional ranking.
 
 **Old keys** `recommended_tier`, `scores`, `estimates`, `explanation`, `tradeoffs`, `warnings`, `assumptions`, `architecture` stay unchanged. Stage 1 `details.benchmark` is preserved by `recommend_with_benchmarks()`.

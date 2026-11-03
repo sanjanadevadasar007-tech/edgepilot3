@@ -25,6 +25,7 @@ function callTeamEngine(action, payload) {
         QUALCOMM_MODEL: process.env.QUALCOMM_MODEL || ''
       }
     });
+    pyProcess.on('error', reject);
 
     let outputData = '';
     let errorData = '';
